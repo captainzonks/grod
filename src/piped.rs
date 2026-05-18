@@ -1,3 +1,4 @@
+//! Piped API client — resolves YouTube video IDs to stream URLs and titles.
 use anyhow::{Context, Result};
 use serde::Deserialize;
 

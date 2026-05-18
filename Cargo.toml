@@ -2,8 +2,15 @@
 name = "grod"
 version = "0.2.0"
 edition = "2021"
-description = "Cast YouTube/Piped videos to any Chromecast device with queue management"
+description = "grod (Google Fishing Rod) — cast YouTube/Piped videos to any Chromecast device with queue management and TUI"
 license = "MIT"
+repository = "https://github.com/captainzonks/grod"
+homepage = "https://github.com/captainzonks/grod"
+documentation = "https://docs.rs/grod"
+readme = "README.md"
+keywords = ["chromecast", "cast", "youtube", "piped", "cli"]
+categories = ["command-line-utilities", "multimedia"]
+exclude = [".github", "install.sh"]
 
 [[bin]]
 name = "grod"

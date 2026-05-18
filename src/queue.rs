@@ -1,3 +1,4 @@
+//! Persistent queue and now-playing state, stored as JSON in the XDG data dir.
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

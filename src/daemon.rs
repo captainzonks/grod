@@ -1,3 +1,4 @@
+//! Background daemon — polls device every 10s and auto-advances the queue when idle.
 use anyhow::Result;
 use std::path::PathBuf;
 use std::time::Duration;

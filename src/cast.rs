@@ -1,3 +1,4 @@
+//! Chromecast control — wraps `go-chromecast` for load, stop, and playback commands.
 use anyhow::{bail, Context, Result};
 use std::process::Command;
 
