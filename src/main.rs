@@ -16,7 +16,9 @@
 //! ```text
 //! grod config discover          # find devices on LAN
 //! grod config set-api <url>     # set Piped API base URL
-//! grod cast <youtube-url>       # cast immediately or queue
+//! grod cast <youtube-url>       # cast immediately or queue  (alias: c)
+//! grod play/pause               # toggle play/pause          (alias: pp)
+//! grod status                   # now playing + queue        (alias: s)
 //! grod tui                      # open interactive TUI
 //! ```
 

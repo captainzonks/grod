@@ -1,13 +1,17 @@
 # grod
 
-Cast YouTube and [Piped](https://github.com/TeamPiped/Piped) videos to any Chromecast device from the command line.
+[![crates.io](https://img.shields.io/crates/v/grod.svg)](https://crates.io/crates/grod)
+[![docs.rs](https://docs.rs/grod/badge.svg)](https://docs.rs/grod)
+
+**grod** (Google Fishing Rod) — cast YouTube and [Piped](https://github.com/TeamPiped/Piped) videos to any Chromecast device from the command line.
 
 ## Features
 
-- Cast videos by YouTube URL, Piped URL, or video ID
+- Cast by YouTube URL, Piped URL, or video ID
 - Queue management with auto-advance
 - Background daemon watches device and plays next in queue
-- Interactive TUI with playback controls
+- Interactive TUI with live now-playing status and playback controls
+- Full playback controls: play/pause, seek, volume, mute
 - Resolves streams via a self-hosted Piped API instance
 
 ## Dependencies
@@ -16,6 +20,12 @@ Cast YouTube and [Piped](https://github.com/TeamPiped/Piped) videos to any Chrom
 - A self-hosted [Piped](https://github.com/TeamPiped/Piped) instance (API backend)
 
 ## Installation
+
+### cargo (recommended)
+
+```bash
+cargo install grod
+```
 
 ### Binary (Linux / macOS)
 
@@ -72,32 +82,29 @@ If the device is busy, the video is queued automatically. Use `-q` to always que
 grod cast -q "https://youtu.be/dQw4w9WgXcQ"
 ```
 
+Alias: `c`
+
 ### Queue management
 
 ```bash
-grod queue <url>       # always add to queue
-grod list              # show queue with titles
-grod remove <pos>      # remove entry at position
-grod clear             # clear entire queue
+grod queue <url>       # always add to queue           (alias: q)
+grod list              # show queue with titles         (alias: l)
+grod remove <pos>      # remove entry at position       (alias: rm)
+grod clear             # clear entire queue             (alias: cl)
+grod status            # show now playing + queue       (alias: s)
 ```
 
 ### Playback controls
 
 ```bash
 grod play/pause        # toggle play/pause  (aliases: pp, p, pause, play, toggle, t)
-grod skip              # stop current, play next in queue  (alias: sk)
-grod forward [secs]    # seek forward (default 10s)  (alias: f)
-grod back [secs]       # seek backward (default 10s)  (alias: b)
-grod volume-up         # (alias: vu)
-grod volume-down       # (alias: vd)
-grod mute              # (alias: m)
-grod unmute            # (alias: um)
-```
-
-### Status
-
-```bash
-grod status
+grod skip              # stop current, play next        (alias: sk)
+grod forward [secs]    # seek forward (default 10s)     (alias: f)
+grod back [secs]       # seek backward (default 10s)    (alias: b)
+grod volume-up                                          (alias: vu)
+grod volume-down                                        (alias: vd)
+grod mute                                               (alias: m)
+grod unmute                                             (alias: um)
 ```
 
 ### Background daemon
@@ -105,8 +112,8 @@ grod status
 The daemon polls the device every 10 seconds and automatically casts the next queued video when the device goes idle.
 
 ```bash
-grod daemon            # start (runs in foreground, use & or a service)
-grod stop-daemon       # stop
+grod daemon            # start (runs in foreground, use & or a service)  (alias: d)
+grod stop-daemon       # stop                                             (alias: sd)
 ```
 
 ### TUI
@@ -119,7 +126,7 @@ grod tui
 
 | Key | Action |
 |-----|--------|
-| `space` | Pause / play |
+| `space` | Play / pause |
 | `s` | Skip current |
 | `d` / `Del` | Remove selected from queue |
 | `→` / `l` | Seek forward 10s |
