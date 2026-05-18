@@ -1,0 +1,39 @@
+[package]
+name = "tosser"
+version = "0.1.0"
+edition = "2021"
+description = "Cast YouTube/Piped videos to any Chromecast device with queue management"
+license = "MIT"
+
+[[bin]]
+name = "toss"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# IPC / state
+dirs = "5"
+libc = "0.2"
+
+# Config file
+toml = "0.8"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
