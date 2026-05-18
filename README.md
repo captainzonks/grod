@@ -87,24 +87,24 @@ Alias: `c`
 ### Queue management
 
 ```bash
-grod queue <url>       # always add to queue           (alias: q)
-grod list              # show queue with titles         (alias: l)
-grod remove <pos>      # remove entry at position       (alias: rm)
-grod clear             # clear entire queue             (alias: cl)
-grod status            # show now playing + queue       (alias: s)
+grod queue <url>       # always add to queue        (alias: q)
+grod list              # show queue with titles      (alias: l)
+grod remove <pos>      # remove entry at position    (alias: rm)
+grod clear             # clear entire queue          (alias: cl)
+grod status            # show now playing + queue    (alias: s)
 ```
 
 ### Playback controls
 
 ```bash
-grod play/pause        # toggle play/pause       (aliases: pp, p, pause, play, toggle, t)
-grod skip              # stop current, play next  (alias: sk)
-grod forward [secs]    # seek forward (default 10s)  (alias: f)
-grod back [secs]       # seek backward (default 10s) (alias: b)
-grod volume-up         # increase volume             (alias: vu)
-grod volume-down       # decrease volume             (alias: vd)
-grod mute              # mute device                 (alias: m)
-grod unmute            # unmute device               (alias: um)
+grod play/pause        # toggle play/pause            (aliases: pp, p, pause, play, toggle, t)
+grod skip              # stop current, play next       (alias: sk)
+grod forward [secs]    # seek forward (default 10s)    (alias: f)
+grod back [secs]       # seek backward (default 10s)   (alias: b)
+grod volume-up         # increase volume               (alias: vu)
+grod volume-down       # decrease volume               (alias: vd)
+grod mute              # mute device                   (alias: m)
+grod unmute            # unmute device                 (alias: um)
 ```
 
 ### Background daemon
@@ -113,7 +113,7 @@ The daemon polls the device every 10 seconds and automatically casts the next qu
 
 ```bash
 grod daemon            # start (runs in foreground, use & or a service)  (alias: d)
-grod stop-daemon       # stop                                             (alias: sd)
+grod stop-daemon       # stop running daemon                              (alias: sd)
 ```
 
 ### TUI
