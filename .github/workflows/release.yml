@@ -41,10 +41,6 @@ jobs:
         if: matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Install OpenSSL (Linux native)
-        if: matrix.os == 'ubuntu-latest' && !matrix.cross
-        run: sudo apt-get install -y pkg-config libssl-dev
-
       - name: Build
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
