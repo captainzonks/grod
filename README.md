@@ -136,6 +136,8 @@ grod tui
 | `j` / `k` | Navigate queue |
 | `q` / `Esc` | Quit |
 
+Errors are shown as a dismissible popup overlay with full trace information. Press any key to close.
+
 ## Configuration
 
 Config is stored at `~/.local/share/grod/config.toml`:

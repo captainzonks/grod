@@ -6,10 +6,10 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Terminal,
 };
 use std::io;
@@ -25,6 +25,7 @@ pub struct TuiApp {
     caster: Caster,
     list_state: ListState,
     status_msg: String,
+    error_popup: Option<String>,
 }
 
 impl TuiApp {
@@ -37,6 +38,7 @@ impl TuiApp {
             caster,
             list_state,
             status_msg: HELP.to_string(),
+            error_popup: None,
         })
     }
 
@@ -56,14 +58,33 @@ impl TuiApp {
         result
     }
 
+    fn show_error(&mut self, err: anyhow::Error) {
+        // Build message with full error chain
+        let mut msg = format!("{err}");
+        let mut source = err.source();
+        while let Some(cause) = source {
+            msg.push_str(&format!("\n\nCaused by:\n  {cause}"));
+            source = cause.source();
+        }
+        self.error_popup = Some(msg);
+    }
+
     fn event_loop(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         loop {
-            let entries = self.queue.load()?;
-            let now_playing = self.queue.now_playing()?;
+            let entries = match self.queue.load() {
+                Ok(e) => e,
+                Err(e) => { self.show_error(e); vec![] }
+            };
+            let now_playing = match self.queue.now_playing() {
+                Ok(np) => np,
+                Err(e) => { self.show_error(e); None }
+            };
             let raw_status = self.caster.status_raw().unwrap_or_default();
             let is_playing = raw_status.contains("PLAYING");
             let is_paused = raw_status.contains("PAUSED");
             let occupied = is_playing || is_paused;
+
+            let error_popup = self.error_popup.clone();
 
             terminal.draw(|f| {
                 let chunks = Layout::default()
@@ -136,6 +157,26 @@ impl TuiApp {
                     .block(Block::default().borders(Borders::ALL))
                     .style(Style::default().fg(Color::Yellow));
                 f.render_widget(status, chunks[2]);
+
+                // Error popup overlay
+                if let Some(ref msg) = error_popup {
+                    let area = f.area();
+                    let popup = popup_rect(60, 40, area);
+                    f.render_widget(Clear, popup);
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Red))
+                        .title(Span::styled(
+                            " Error — press any key to dismiss ",
+                            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                        ))
+                        .title_alignment(Alignment::Center);
+                    let para = Paragraph::new(msg.as_str())
+                        .block(block)
+                        .style(Style::default().fg(Color::White))
+                        .wrap(Wrap { trim: false });
+                    f.render_widget(para, popup);
+                }
             })?;
 
             if event::poll(std::time::Duration::from_millis(500))? {
@@ -143,7 +184,19 @@ impl TuiApp {
                     if key.kind != KeyEventKind::Press {
                         continue;
                     }
-                    let entries = self.queue.load()?;
+
+                    // Any key dismisses the error popup
+                    if self.error_popup.is_some() {
+                        self.error_popup = None;
+                        self.status_msg = HELP.to_string();
+                        continue;
+                    }
+
+                    let entries = match self.queue.load() {
+                        Ok(e) => e,
+                        Err(e) => { self.show_error(e); continue; }
+                    };
+
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => break,
 
@@ -181,60 +234,66 @@ impl TuiApp {
                                             }
                                             self.status_msg = format!("Removed: {}", e.title);
                                         }
-                                        Err(e) => self.status_msg = format!("Error: {e}"),
+                                        Err(e) => self.show_error(e),
                                     }
                                 }
                             }
                         }
                         KeyCode::Char('s') => {
-                            match self.caster.stop() {
-                                Ok(_) => self.status_msg = "Skipped. Daemon will advance queue.".to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = self.caster.stop() {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = "Skipped. Daemon will advance queue.".to_string();
                             }
                         }
 
                         // Playback controls
                         KeyCode::Char(' ') => {
-                            match self.caster.toggle_pause() {
-                                Ok(_) => self.status_msg = HELP.to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = self.caster.toggle_pause() {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = HELP.to_string();
                             }
                         }
                         KeyCode::Right | KeyCode::Char('l') => {
-                            match self.caster.seek_forward(10) {
-                                Ok(_) => self.status_msg = "Seeked +10s".to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = self.caster.seek_forward(10) {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = "Seeked +10s".to_string();
                             }
                         }
                         KeyCode::Left | KeyCode::Char('h') => {
-                            match self.caster.seek_back(10) {
-                                Ok(_) => self.status_msg = "Seeked -10s".to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = self.caster.seek_back(10) {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = "Seeked -10s".to_string();
                             }
                         }
                         KeyCode::Char('+') => {
-                            match self.caster.volume_up() {
-                                Ok(_) => self.status_msg = "Volume up".to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = self.caster.volume_up() {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = "Volume up".to_string();
                             }
                         }
                         KeyCode::Char('-') => {
-                            match self.caster.volume_down() {
-                                Ok(_) => self.status_msg = "Volume down".to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = self.caster.volume_down() {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = "Volume down".to_string();
                             }
                         }
                         KeyCode::Char('m') => {
-                            // Toggle mute based on current status
                             let raw = self.caster.status_raw().unwrap_or_default();
                             let result = if raw.contains("muted=true") {
                                 self.caster.unmute()
                             } else {
                                 self.caster.mute()
                             };
-                            match result {
-                                Ok(_) => self.status_msg = "Toggled mute".to_string(),
-                                Err(e) => self.status_msg = format!("Error: {e}"),
+                            if let Err(e) = result {
+                                self.show_error(e);
+                            } else {
+                                self.status_msg = "Toggled mute".to_string();
                             }
                         }
 
@@ -245,4 +304,24 @@ impl TuiApp {
         }
         Ok(())
     }
+}
+
+/// Center a popup of `percent_x`% width and `percent_y`% height within `area`.
+fn popup_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let vert = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(vert[1])[1]
 }

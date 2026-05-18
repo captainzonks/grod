@@ -7,7 +7,7 @@
 //!
 //! - Cast by YouTube URL, Piped URL, or video ID
 //! - Queue with auto-advance via background daemon
-//! - Interactive TUI queue manager ([`tui`])
+//! - Interactive TUI queue manager with error popup overlay ([`tui`])
 //! - Full playback controls: pause, seek, volume, mute
 //! - Stream resolution via self-hosted Piped API ([`piped`])
 //!
