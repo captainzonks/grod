@@ -97,14 +97,14 @@ grod status            # show now playing + queue       (alias: s)
 ### Playback controls
 
 ```bash
-grod play/pause        # toggle play/pause  (aliases: pp, p, pause, play, toggle, t)
-grod skip              # stop current, play next        (alias: sk)
-grod forward [secs]    # seek forward (default 10s)     (alias: f)
-grod back [secs]       # seek backward (default 10s)    (alias: b)
-grod volume-up                                          (alias: vu)
-grod volume-down                                        (alias: vd)
-grod mute                                               (alias: m)
-grod unmute                                             (alias: um)
+grod play/pause        # toggle play/pause       (aliases: pp, p, pause, play, toggle, t)
+grod skip              # stop current, play next  (alias: sk)
+grod forward [secs]    # seek forward (default 10s)  (alias: f)
+grod back [secs]       # seek backward (default 10s) (alias: b)
+grod volume-up         # increase volume             (alias: vu)
+grod volume-down       # decrease volume             (alias: vd)
+grod mute              # mute device                 (alias: m)
+grod unmute            # unmute device               (alias: um)
 ```
 
 ### Background daemon
