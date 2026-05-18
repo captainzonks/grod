@@ -1,6 +1,6 @@
 [package]
 name = "grod"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 rust-version = "1.85"
 description = "grod (Google Fishing Rod) — cast YouTube/Piped videos to any Chromecast device with queue management and TUI"
