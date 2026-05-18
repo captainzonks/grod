@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 # install.sh — download and install the latest toss binary
-# Usage: curl -fsSL https://raw.githubusercontent.com/OWNER/tosser/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/captainzonks/tosser/main/install.sh | sh
 
 set -eu
 
-REPO="OWNER/tosser"
+REPO="captainzonks/tosser"
 BIN="toss"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 

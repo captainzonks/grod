@@ -20,19 +20,19 @@ Cast YouTube and [Piped](https://github.com/TeamPiped/Piped) videos to any Chrom
 ### Binary (Linux / macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/tosser/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/captainzonks/tosser/main/install.sh | sh
 ```
 
 Installs to `~/.local/bin/toss`. Set `INSTALL_DIR` to override:
 
 ```bash
-INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/OWNER/tosser/main/install.sh | sh
+INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/captainzonks/tosser/main/install.sh | sh
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/OWNER/tosser
+git clone https://github.com/captainzonks/tosser
 cd tosser
 cargo install --path .
 ```
