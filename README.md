@@ -69,6 +69,15 @@ grod config show
 
 ## Usage
 
+### Configuration commands
+
+```bash
+grod config show                    # show current config
+grod config set-api <url>           # set Piped API base URL
+grod config set-device <addr> [port]  # set device address (default port: 8009)
+grod config discover                # discover Chromecast devices on LAN
+```
+
 ### Cast a video
 
 ```bash
