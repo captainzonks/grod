@@ -11,6 +11,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Cast a video; queue if device is busy
+    #[command(alias = "c")]
     Cast {
         /// YouTube URL, Piped URL, or video ID
         url: String,
@@ -19,50 +20,61 @@ pub enum Commands {
         queue: bool,
     },
     /// Add a video to the queue without casting immediately
+    #[command(alias = "q")]
     Queue {
         /// YouTube URL, Piped URL, or video ID
         url: String,
     },
     /// Skip current video and play next in queue
+    #[command(alias = "sk")]
     Skip,
-    /// Pause playback
-    Pause,
-    /// Resume playback
-    Play,
-    /// Toggle pause/play
-    Toggle,
+    /// Toggle play/pause
+    #[command(name = "play/pause", alias = "pp", alias = "p", alias = "pause", alias = "play", alias = "t", alias = "toggle")]
+    PlayPause,
     /// Mute device
+    #[command(alias = "m")]
     Mute,
     /// Unmute device
+    #[command(alias = "um")]
     Unmute,
     /// Increase volume
+    #[command(alias = "vu")]
     VolumeUp,
     /// Decrease volume
+    #[command(alias = "vd")]
     VolumeDown,
     /// Seek forward by seconds (default 10)
+    #[command(alias = "f")]
     Forward {
         #[arg(default_value = "10")]
         seconds: u32,
     },
     /// Seek backward by seconds (default 10)
+    #[command(alias = "b")]
     Back {
         #[arg(default_value = "10")]
         seconds: u32,
     },
     /// List queued videos
+    #[command(alias = "l")]
     List,
     /// Remove a video from the queue by position
+    #[command(alias = "rm")]
     Remove {
         /// 1-based position in queue
         position: usize,
     },
     /// Clear the entire queue
+    #[command(alias = "cl")]
     Clear,
     /// Show current device status and now playing
+    #[command(alias = "s")]
     Status,
     /// Start the background queue daemon
+    #[command(alias = "d")]
     Daemon,
     /// Stop the background queue daemon
+    #[command(alias = "sd")]
     StopDaemon,
     /// Interactive TUI queue manager
     Tui,

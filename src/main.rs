@@ -125,9 +125,7 @@ async fn handle_command(
             }
         }
 
-        Commands::Pause => caster.pause()?,
-        Commands::Play => caster.unpause()?,
-        Commands::Toggle => caster.toggle_pause()?,
+        Commands::PlayPause => caster.toggle_pause()?,
         Commands::Mute => caster.mute()?,
         Commands::Unmute => caster.unmute()?,
         Commands::VolumeUp => caster.volume_up()?,

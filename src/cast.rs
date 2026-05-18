@@ -40,14 +40,6 @@ impl Caster {
         self.gc(&["stop"])
     }
 
-    pub fn pause(&self) -> Result<()> {
-        self.gc(&["pause"])
-    }
-
-    pub fn unpause(&self) -> Result<()> {
-        self.gc(&["unpause"])
-    }
-
     pub fn toggle_pause(&self) -> Result<()> {
         self.gc(&["togglepause"])
     }

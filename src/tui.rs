@@ -17,7 +17,7 @@ use std::io;
 use crate::cast::Caster;
 use crate::queue::Queue;
 
-const HELP: &str = " space: pause/play  s: skip  d: delete  →/l: +10s  ←/h: -10s  \
+const HELP: &str = " space: play/pause  s: skip  d: delete  →/l: +10s  ←/h: -10s  \
                     +/-: volume  m: mute  j/k: navigate  q: quit";
 
 pub struct TuiApp {

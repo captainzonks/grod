@@ -84,16 +84,14 @@ grod clear             # clear entire queue
 ### Playback controls
 
 ```bash
-grod pause
-grod play
-grod toggle            # pause/play toggle
-grod skip              # stop current, play next in queue
-grod forward [secs]    # seek forward (default 10s)
-grod back [secs]       # seek backward (default 10s)
-grod volume-up
-grod volume-down
-grod mute
-grod unmute
+grod play/pause        # toggle play/pause  (aliases: pp, p, pause, play, toggle, t)
+grod skip              # stop current, play next in queue  (alias: sk)
+grod forward [secs]    # seek forward (default 10s)  (alias: f)
+grod back [secs]       # seek backward (default 10s)  (alias: b)
+grod volume-up         # (alias: vu)
+grod volume-down       # (alias: vd)
+grod mute              # (alias: m)
+grod unmute            # (alias: um)
 ```
 
 ### Status
