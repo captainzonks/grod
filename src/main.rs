@@ -39,14 +39,14 @@ async fn main() -> Result<()> {
 
 fn require_caster(cfg: &Config) -> Result<Caster> {
     if cfg.device_addr.is_empty() {
-        bail!("No device configured. Run: toss config set-device <addr> [port]");
+        bail!("No device configured. Run: grod config set-device <addr> [port]");
     }
     Ok(Caster::new(&cfg.device_addr, cfg.device_port))
 }
 
 fn require_piped(cfg: &Config) -> Result<PipedClient> {
     if cfg.piped_api.is_empty() {
-        bail!("No Piped API configured. Run: toss config set-api <url>");
+        bail!("No Piped API configured. Run: grod config set-api <url>");
     }
     Ok(PipedClient::new(&cfg.piped_api))
 }
@@ -146,7 +146,7 @@ async fn handle_command(
                     .unwrap_or_default();
                 match queue.now_playing()? {
                     Some(e) => println!("{state_label}: {}\n  ID: {} | {time}", e.title, e.id),
-                    None => println!("{state_label}: (cast outside toss) | {time}"),
+                    None => println!("{state_label}: (cast outside grod) | {time}"),
                 }
             } else {
                 println!("Idle");
@@ -175,22 +175,22 @@ async fn cast_entry(caster: &Caster, piped: &PipedClient, queue: &Queue, entry: 
 
 fn ensure_daemon(_caster: &Caster) {
     if !daemon::is_running() {
-        eprintln!("Hint: run `toss daemon` in background to auto-advance queue");
+        eprintln!("Hint: run `grod daemon` in background to auto-advance queue");
     }
 }
 
 async fn handle_daemon(cfg: Config) -> Result<()> {
     if cfg.device_addr.is_empty() {
-        bail!("No device configured. Run: toss config set-device <addr> [port]");
+        bail!("No device configured. Run: grod config set-device <addr> [port]");
     }
     if cfg.piped_api.is_empty() {
-        bail!("No Piped API configured. Run: toss config set-api <url>");
+        bail!("No Piped API configured. Run: grod config set-api <url>");
     }
     if daemon::is_running() {
         println!("Daemon already running");
         return Ok(());
     }
-    println!("Starting daemon (Ctrl-C to stop, or use `toss stop-daemon`)...");
+    println!("Starting daemon (Ctrl-C to stop, or use `grod stop-daemon`)...");
     daemon::run_loop(cfg.piped_api, cfg.device_addr, cfg.device_port).await
 }
 

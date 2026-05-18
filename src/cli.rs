@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "toss", about = "Cast YouTube/Piped videos to Chromecast devices")]
+#[command(name = "grod", about = "Cast YouTube/Piped videos to Chromecast devices")]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
@@ -66,7 +66,7 @@ pub enum Commands {
     StopDaemon,
     /// Interactive TUI queue manager
     Tui,
-    /// Configure tosser (Piped API URL, device address)
+    /// Configure grod (Piped API URL, device address)
     Config {
         #[command(subcommand)]
         action: ConfigAction,

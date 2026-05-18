@@ -1,4 +1,4 @@
-# tosser
+# grod
 
 Cast YouTube and [Piped](https://github.com/TeamPiped/Piped) videos to any Chromecast device from the command line.
 
@@ -20,20 +20,20 @@ Cast YouTube and [Piped](https://github.com/TeamPiped/Piped) videos to any Chrom
 ### Binary (Linux / macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/captainzonks/tosser/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/captainzonks/grod/main/install.sh | sh
 ```
 
-Installs to `~/.local/bin/toss`. Set `INSTALL_DIR` to override:
+Installs to `~/.local/bin/grod`. Set `INSTALL_DIR` to override:
 
 ```bash
-INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/captainzonks/tosser/main/install.sh | sh
+INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/captainzonks/grod/main/install.sh | sh
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/captainzonks/tosser
-cd tosser
+git clone https://github.com/captainzonks/grod
+cd grod
 cargo install --path .
 ```
 
@@ -42,19 +42,19 @@ cargo install --path .
 Discover devices on your network and select one:
 
 ```bash
-toss config discover
+grod config discover
 ```
 
 Set your Piped API URL:
 
 ```bash
-toss config set-api https://your-piped-instance.example.com
+grod config set-api https://your-piped-instance.example.com
 ```
 
 Verify:
 
 ```bash
-toss config show
+grod config show
 ```
 
 ## Usage
@@ -62,44 +62,44 @@ toss config show
 ### Cast a video
 
 ```bash
-toss cast "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-toss cast dQw4w9WgXcQ
+grod cast "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+grod cast dQw4w9WgXcQ
 ```
 
 If the device is busy, the video is queued automatically. Use `-q` to always queue:
 
 ```bash
-toss cast -q "https://youtu.be/dQw4w9WgXcQ"
+grod cast -q "https://youtu.be/dQw4w9WgXcQ"
 ```
 
 ### Queue management
 
 ```bash
-toss queue <url>       # always add to queue
-toss list              # show queue with titles
-toss remove <pos>      # remove entry at position
-toss clear             # clear entire queue
+grod queue <url>       # always add to queue
+grod list              # show queue with titles
+grod remove <pos>      # remove entry at position
+grod clear             # clear entire queue
 ```
 
 ### Playback controls
 
 ```bash
-toss pause
-toss play
-toss toggle            # pause/play toggle
-toss skip              # stop current, play next in queue
-toss forward [secs]    # seek forward (default 10s)
-toss back [secs]       # seek backward (default 10s)
-toss volume-up
-toss volume-down
-toss mute
-toss unmute
+grod pause
+grod play
+grod toggle            # pause/play toggle
+grod skip              # stop current, play next in queue
+grod forward [secs]    # seek forward (default 10s)
+grod back [secs]       # seek backward (default 10s)
+grod volume-up
+grod volume-down
+grod mute
+grod unmute
 ```
 
 ### Status
 
 ```bash
-toss status
+grod status
 ```
 
 ### Background daemon
@@ -107,8 +107,8 @@ toss status
 The daemon polls the device every 10 seconds and automatically casts the next queued video when the device goes idle.
 
 ```bash
-toss daemon            # start (runs in foreground, use & or a service)
-toss stop-daemon       # stop
+grod daemon            # start (runs in foreground, use & or a service)
+grod stop-daemon       # stop
 ```
 
 ### TUI
@@ -116,7 +116,7 @@ toss stop-daemon       # stop
 Interactive queue manager with live now-playing status:
 
 ```bash
-toss tui
+grod tui
 ```
 
 | Key | Action |
@@ -133,7 +133,7 @@ toss tui
 
 ## Configuration
 
-Config is stored at `~/.local/share/tosser/config.toml`:
+Config is stored at `~/.local/share/grod/config.toml`:
 
 ```toml
 piped_api = "https://your-piped-instance.example.com"

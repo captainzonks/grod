@@ -87,7 +87,7 @@ impl TuiApp {
                 let np_text = match &now_playing {
                     Some(e) if occupied => format!(" {icon}  {}{suffix}", e.title),
                     Some(e) => format!(" ■  {} (stopped)", e.title),
-                    None if occupied => format!(" {icon}  (cast outside toss){suffix}"),
+                    None if occupied => format!(" {icon}  (cast outside grod){suffix}"),
                     None => " ■  Idle".to_string(),
                 };
 

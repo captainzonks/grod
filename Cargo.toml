@@ -1,12 +1,12 @@
 [package]
-name = "tosser"
+name = "grod"
 version = "0.1.0"
 edition = "2021"
 description = "Cast YouTube/Piped videos to any Chromecast device with queue management"
 license = "MIT"
 
 [[bin]]
-name = "toss"
+name = "grod"
 path = "src/main.rs"
 
 [dependencies]

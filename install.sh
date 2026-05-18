@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
-# install.sh — download and install the latest toss binary
-# Usage: curl -fsSL https://raw.githubusercontent.com/captainzonks/tosser/main/install.sh | sh
+# install.sh — download and install the latest grod binary
+# Usage: curl -fsSL https://raw.githubusercontent.com/captainzonks/grod/main/install.sh | sh
 
 set -eu
 
-REPO="captainzonks/tosser"
-BIN="toss"
+REPO="captainzonks/grod"
+BIN="grod"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Detect OS and arch
@@ -46,7 +46,7 @@ fi
 
 echo "Installing $BIN $TAG for $TARGET..."
 
-ARCHIVE="toss-${TAG}-${TARGET}.tar.gz"
+ARCHIVE="grod-${TAG}-${TARGET}.tar.gz"
 URL="https://github.com/$REPO/releases/download/$TAG/$ARCHIVE"
 
 TMP=$(mktemp -d)

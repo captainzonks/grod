@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const CONFIG_FILENAME: &str = "config.toml";
-const DATA_DIR_NAME: &str = "tosser";
+const DATA_DIR_NAME: &str = "grod";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
