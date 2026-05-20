@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/grod-logo-01.svg" alt="grod logo" width="280"/>
+<img src="assets/grod-logo-01.webp" alt="grod logo" width="280"/>
 
 # grod
 
@@ -328,7 +328,7 @@ A Flutter remote app for Android (`grod_remote`) is in development. It speaks th
 
 <div align="center">
 
-<img src="assets/grod-mascot-01.svg" alt="grod mascot" width="160"/>
+<img src="assets/grod-mascot-01.webp" alt="grod mascot" width="160"/>
 
 </div>
 
