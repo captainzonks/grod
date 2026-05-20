@@ -1,6 +1,6 @@
 [package]
 name = "grod"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "grod (Google Fishing Rod) — cast YouTube/Piped videos to any Chromecast device with queue management and TUI"
@@ -41,6 +41,19 @@ libc = "0.2"
 
 # Config file
 toml = "0.8"
+
+# HTTP API server
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# Streaming helpers for muxing server
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+bytes = "1"
+rand = "0.8"
+
+# mDNS service discovery (advertises _grod._tcp on the LAN)
+mdns-sd = "0.19"
 
 # Error handling
 anyhow = "1"

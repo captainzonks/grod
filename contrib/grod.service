@@ -1,0 +1,33 @@
+[Unit]
+Description=grod — cast YouTube/Piped videos to Chromecast (background daemon)
+Documentation=https://github.com/captainzonks/grod
+# We don't have a real network.target in user-mode systemd, so the service
+# starts at login and restarts if the network isn't ready yet.
+After=default.target
+
+[Service]
+Type=simple
+# Prefer the user's own install, then a system-wide one. If you installed
+# grod somewhere else, override with `systemctl --user edit grod.service`
+# and set ExecStart to your binary path.
+ExecStart=/bin/sh -c 'exec "$(command -v grod || echo %h/.local/bin/grod)" daemon'
+# Auto-restart on crash; back off so a crash loop doesn't pin the CPU.
+Restart=on-failure
+RestartSec=5s
+# `grod daemon` is its own process group leader; SIGTERM is graceful.
+KillMode=mixed
+TimeoutStopSec=10s
+
+# Resource hygiene (very modest — ffmpeg can burst high during transcode).
+# Nothing here is restrictive enough to break playback.
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=4
+
+# Don't carry stale environment between restarts.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grod
+
+[Install]
+WantedBy=default.target

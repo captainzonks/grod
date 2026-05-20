@@ -70,12 +70,12 @@ pub enum Commands {
     /// Show current device status and now playing
     #[command(alias = "s")]
     Status,
-    /// Start the background queue daemon
+    /// Manage the background queue daemon (start | stop | status)
     #[command(alias = "d")]
-    Daemon,
-    /// Stop the background queue daemon
-    #[command(alias = "sd")]
-    StopDaemon,
+    Daemon {
+        #[command(subcommand)]
+        action: Option<DaemonAction>,
+    },
     /// Interactive TUI queue manager
     Tui,
     /// Configure grod (Piped API URL, device address)
@@ -83,6 +83,19 @@ pub enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Print firewall commands to allow the API + stream ports on the LAN
+    Firewall,
+}
+
+#[derive(Subcommand, Debug, Default)]
+pub enum DaemonAction {
+    /// Start the daemon (foreground; use systemd or `&` for backgrounding)
+    #[default]
+    Start,
+    /// Stop the running daemon
+    Stop,
+    /// Show daemon status (running, ports, live now-playing if reachable)
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
@@ -101,4 +114,12 @@ pub enum ConfigAction {
     },
     /// Discover Chromecast devices on the network
     Discover,
+    /// Set API PIN (empty string to disable)
+    SetPin {
+        pin: String,
+    },
+    /// Set default cast quality (best | 1080p | 720p | 480p | 360p)
+    SetQuality {
+        quality: String,
+    },
 }

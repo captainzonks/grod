@@ -2,6 +2,7 @@
 use anyhow::{bail, Context, Result};
 use std::process::Command;
 
+#[derive(Clone)]
 pub struct Caster {
     pub addr: String,
     pub port: u16,
@@ -16,17 +17,25 @@ impl Caster {
     }
 
     /// Cast a stream URL to the device. Returns immediately (detached).
-    pub fn load(&self, stream_url: &str) -> Result<()> {
+    /// `content_type` overrides Chromecast's autodetection (e.g. `video/mp2t` for MPEG-TS).
+    /// Pass `None` to let go-chromecast guess.
+    pub fn load(&self, stream_url: &str, content_type: Option<&str>) -> Result<()> {
+        let port_str = self.port.to_string();
+        let mut args: Vec<&str> = vec![
+            "load",
+            stream_url,
+            "--addr",
+            &self.addr,
+            "--port",
+            &port_str,
+            "--detach",
+        ];
+        if let Some(ct) = content_type {
+            args.push("-c");
+            args.push(ct);
+        }
         let status = Command::new("go-chromecast")
-            .args([
-                "load",
-                stream_url,
-                "--addr",
-                &self.addr,
-                "--port",
-                &self.port.to_string(),
-                "--detach",
-            ])
+            .args(&args)
             .status()
             .context("failed to run go-chromecast — is it installed?")?;
 
@@ -95,21 +104,59 @@ impl Caster {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     }
 
-    /// True if device is actively playing OR paused (i.e. occupied with media).
+    /// True if device is occupied with media — PLAYING, PAUSED, or BUFFERING.
+    /// BUFFERING must count as occupied so the daemon's poll loop doesn't clear
+    /// `now_playing` while Chromecast is still loading a freshly issued stream.
     pub fn is_playing(&self) -> bool {
         self.status_raw()
-            .map(|s| s.contains("PLAYING") || s.contains("PAUSED"))
+            .map(|s| {
+                s.contains("PLAYING") || s.contains("PAUSED") || s.contains("BUFFERING")
+            })
             .unwrap_or(false)
     }
 
     /// Parse time remaining in seconds from status output.
-    /// Format: "time remaining=Xs/Ys"
+    /// Format: "time remaining=Xs/Ys" (where Ys may be "-1s" for live/HLS streams —
+    /// remaining is still valid in that case).
     pub fn time_remaining(&self) -> Option<u64> {
         let raw = self.status_raw().ok()?;
         let marker = "time remaining=";
         let pos = raw.find(marker)?;
         let after = &raw[pos + marker.len()..];
-        let remaining_str: String = after.chars().take_while(|&c| c != 's').collect();
-        remaining_str.parse().ok()
+        let field: String = after.chars().take_while(|&c| c != ',').collect();
+        let left = field.split('/').next()?.trim_end_matches('s');
+        left.parse().ok()
+    }
+
+    /// Returns `(position_secs, duration_secs)` for the active cast.
+    /// The Chromecast reports `time remaining=Xs/Ys` where Y is the total
+    /// duration. Position is computed as `Y - X`, clamped to [0, Y].
+    /// Returns None if no media is playing, or if the receiver reports a
+    /// duration of -1 (live streams and our event-type HLS playlists
+    /// produce this — there's no progress to show).
+    pub fn position_duration(&self) -> Option<(u64, u64)> {
+        let (remaining, duration) = self.parse_time_field()?;
+        let pos = duration.saturating_sub(remaining);
+        Some((pos, duration))
+    }
+
+    /// Parses `time remaining=<remaining>s/<duration>s` into `(remaining, duration)`.
+    /// Returns None when the duration is unknown (e.g. live streams report -1).
+    fn parse_time_field(&self) -> Option<(u64, u64)> {
+        let raw = self.status_raw().ok()?;
+        let marker = "time remaining=";
+        let pos = raw.find(marker)?;
+        let after = &raw[pos + marker.len()..];
+        // Pull up to the comma — "Xs/Ys"
+        let field: String = after.chars().take_while(|&c| c != ',').collect();
+        let (left, right) = field.split_once('/')?;
+        let remaining: u64 = left.trim_end_matches('s').parse().ok()?;
+        // Duration "-1s" → unknown; bail.
+        let right = right.trim_end_matches('s');
+        if right.starts_with('-') {
+            return None;
+        }
+        let duration: u64 = right.parse().ok()?;
+        Some((remaining, duration))
     }
 }

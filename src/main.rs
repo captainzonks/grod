@@ -10,8 +10,8 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 
 use cast::Caster;
-use cli::{Cli, Commands, ConfigAction};
-use config::Config;
+use cli::{Cli, Commands, ConfigAction, DaemonAction};
+use config::{Config, Quality};
 use piped::{extract_video_id, PipedClient};
 use queue::{Queue, QueueEntry};
 
@@ -22,8 +22,15 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Config { action } => handle_config(action, cfg).await,
-        Commands::Daemon => handle_daemon(cfg).await,
-        Commands::StopDaemon => daemon::stop(),
+        Commands::Daemon { action } => match action.unwrap_or_default() {
+            DaemonAction::Start => handle_daemon(cfg).await,
+            DaemonAction::Stop => daemon::stop(),
+            DaemonAction::Status => daemon::print_status(&cfg).await,
+        },
+        Commands::Firewall => {
+            daemon::print_firewall_commands(cfg.api_port, cfg.stream_port);
+            Ok(())
+        }
         Commands::Tui => {
             let caster = require_caster(&cfg)?;
             tui::TuiApp::new(caster)?.run()
@@ -32,7 +39,8 @@ async fn main() -> Result<()> {
             let caster = require_caster(&cfg)?;
             let piped = require_piped(&cfg)?;
             let queue = Queue::open()?;
-            handle_command(cmd, caster, piped, queue).await
+            let quality = cfg.default_quality;
+            handle_command(cmd, caster, piped, queue, quality).await
         }
     }
 }
@@ -56,6 +64,7 @@ async fn handle_command(
     caster: Caster,
     piped: PipedClient,
     queue: Queue,
+    quality: Quality,
 ) -> Result<()> {
     match cmd {
         Commands::Cast { url, queue: force_queue } => {
@@ -69,19 +78,20 @@ async fn handle_command(
                 ensure_daemon(&caster);
             } else {
                 if let Some(next) = queue.pop()? {
-                    cast_entry(&caster, &piped, &queue, next).await?;
+                    cast_entry(&caster, &piped, &queue, next, quality).await?;
                     let title = piped.title(&id).await?;
                     let pos = queue.push(QueueEntry { id, title: title.clone() })?;
                     println!("Playing queued video first; yours queued at position {pos}: {title}");
                     ensure_daemon(&caster);
                 } else {
-                    let video = piped.resolve(&id).await?;
-                    println!("Casting: {}", video.title);
-                    caster.load(&video.stream_url)?;
-                    queue.set_now_playing(&QueueEntry {
-                        id: video.id,
-                        title: video.title,
-                    })?;
+                    cast_entry(
+                        &caster,
+                        &piped,
+                        &queue,
+                        QueueEntry { id: id.clone(), title: String::new() },
+                        quality,
+                    )
+                    .await?;
                 }
             }
         }
@@ -98,7 +108,7 @@ async fn handle_command(
         Commands::Skip => {
             caster.stop()?;
             match queue.pop()? {
-                Some(entry) => cast_entry(&caster, &piped, &queue, entry).await?,
+                Some(entry) => cast_entry(&caster, &piped, &queue, entry, quality).await?,
                 None => println!("Queue empty"),
             }
         }
@@ -135,8 +145,16 @@ async fn handle_command(
 
         Commands::Status => {
             let raw = caster.status_raw()?;
-            let occupied = raw.contains("PLAYING") || raw.contains("PAUSED");
-            let state_label = if raw.contains("PAUSED") { "Paused" } else { "Now playing" };
+            let occupied = raw.contains("PLAYING")
+                || raw.contains("PAUSED")
+                || raw.contains("BUFFERING");
+            let state_label = if raw.contains("PAUSED") {
+                "Paused"
+            } else if raw.contains("BUFFERING") {
+                "Buffering"
+            } else {
+                "Now playing"
+            };
 
             if occupied {
                 let time = caster.time_remaining()
@@ -160,13 +178,42 @@ async fn handle_command(
     Ok(())
 }
 
-async fn cast_entry(caster: &Caster, piped: &PipedClient, queue: &Queue, entry: QueueEntry) -> Result<()> {
-    let video = piped.resolve(&entry.id).await?;
-    println!("Casting: {}", video.title);
-    caster.load(&video.stream_url)?;
+async fn cast_entry(
+    caster: &Caster,
+    piped: &PipedClient,
+    queue: &Queue,
+    entry: QueueEntry,
+    quality: Quality,
+) -> Result<()> {
+    let video = piped.resolve(&entry.id, quality).await?;
+    let title = if entry.title.is_empty() { video.title.clone() } else { entry.title };
+    println!("Casting: {}", title);
+
+    // CLI path has no local muxing streamer running — fall back to direct stream_url.
+    // For high-quality (1080p) playback, run `grod daemon` which hosts the muxer.
+    let url = match video.stream_url.as_deref() {
+        Some(u) => u.to_string(),
+        None => anyhow::bail!(
+            "no muxed fallback available for this video; start `grod daemon` for high-quality casting"
+        ),
+    };
+
+    if video.video_url.is_some() && !daemon::is_running() {
+        eprintln!(
+            "Note: streaming at ~360p (muxed fallback). Run `grod daemon` for {} muxed playback.",
+            quality.label()
+        );
+    }
+
+    let ct = if url.contains(".m3u8") || url.contains("/hls/") {
+        "application/x-mpegurl"
+    } else {
+        "video/mp4"
+    };
+    caster.load(&url, Some(ct))?;
     queue.set_now_playing(&QueueEntry {
         id: entry.id,
-        title: entry.title,
+        title,
     })?;
     Ok(())
 }
@@ -188,8 +235,20 @@ async fn handle_daemon(cfg: Config) -> Result<()> {
         println!("Daemon already running");
         return Ok(());
     }
-    println!("Starting daemon (Ctrl-C to stop, or use `grod stop-daemon`)...");
-    daemon::run_loop(cfg.piped_api, cfg.device_addr, cfg.device_port).await
+    println!("Starting daemon (Ctrl-C to stop, or `grod daemon stop` from another shell)...");
+    println!("HTTP API listening on 0.0.0.0:{}", cfg.api_port);
+    if !cfg.api_pin.is_empty() {
+        println!("API PIN protection enabled");
+    }
+    daemon::run_loop(daemon::DaemonConfig {
+        piped_api: cfg.piped_api,
+        device_addr: cfg.device_addr,
+        device_port: cfg.device_port,
+        api_port: cfg.api_port,
+        stream_port: cfg.stream_port,
+        api_pin: cfg.api_pin,
+        default_quality: cfg.default_quality,
+    }).await
 }
 
 async fn handle_config(action: ConfigAction, mut cfg: Config) -> Result<()> {
@@ -197,6 +256,10 @@ async fn handle_config(action: ConfigAction, mut cfg: Config) -> Result<()> {
         ConfigAction::Show => {
             println!("Piped API : {}", if cfg.piped_api.is_empty() { "(not set)" } else { &cfg.piped_api });
             println!("Device    : {}:{}", if cfg.device_addr.is_empty() { "(not set)" } else { &cfg.device_addr }, cfg.device_port);
+            println!("API port  : {}", cfg.api_port);
+            println!("Stream port: {}", cfg.stream_port);
+            println!("API PIN   : {}", if cfg.api_pin.is_empty() { "(not set)" } else { "****" });
+            println!("Quality   : {}", cfg.default_quality.label());
         }
         ConfigAction::SetApi { url } => {
             cfg.piped_api = url.clone();
@@ -208,6 +271,22 @@ async fn handle_config(action: ConfigAction, mut cfg: Config) -> Result<()> {
             cfg.device_port = port;
             cfg.save()?;
             println!("Device set to: {addr}:{port}");
+        }
+        ConfigAction::SetPin { pin } => {
+            cfg.api_pin = pin.clone();
+            cfg.save()?;
+            if pin.is_empty() {
+                println!("API PIN disabled");
+            } else {
+                println!("API PIN set");
+            }
+        }
+        ConfigAction::SetQuality { quality } => {
+            let q = Quality::parse(&quality)
+                .with_context(|| format!("invalid quality '{quality}' (use best|1080p|720p|480p|360p)"))?;
+            cfg.default_quality = q;
+            cfg.save()?;
+            println!("Default quality set to: {}", q.label());
         }
         ConfigAction::Discover => {
             let out = std::process::Command::new("go-chromecast")

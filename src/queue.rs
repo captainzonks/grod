@@ -14,6 +14,7 @@ pub struct QueueEntry {
     pub title: String,
 }
 
+#[derive(Clone)]
 pub struct Queue {
     path: PathBuf,
     now_playing_path: PathBuf,
