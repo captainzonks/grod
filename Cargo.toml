@@ -11,7 +11,7 @@ documentation = "https://docs.rs/grod"
 readme = "README.md"
 keywords = ["chromecast", "cast", "youtube", "piped", "cli"]
 categories = ["command-line-utilities", "multimedia"]
-exclude = [".github", "install.sh"]
+exclude = [".github", "install.sh", "assets", "contrib"]
 
 [[bin]]
 name = "grod"
