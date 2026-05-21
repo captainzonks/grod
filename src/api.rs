@@ -1,5 +1,6 @@
 //! HTTP API server — exposes grod controls to local-network clients (e.g. Flutter app).
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use axum::{
     extract::{Path, Query, Request, State},
@@ -13,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tower_http::cors::CorsLayer;
 
 use crate::cast::Caster;
-use crate::config::{Config, Quality};
+use crate::config::{Config, Encoder, Quality};
 use crate::daemon::resolve_cast_url;
 use crate::piped::{extract_video_id, PipedClient};
 use crate::queue::{Queue, QueueEntry};
@@ -33,6 +34,14 @@ pub struct AppState {
     /// successful cast (both HLS-mux and fallback paths) so /status can
     /// show it even when no streamer session is active (e.g. fallback cast).
     pub last_cast_quality: Arc<Mutex<String>>,
+    /// Resolved encoder backend (`auto` already collapsed to concrete value
+    /// at daemon start). Used for every HLS muxer session.
+    pub encoder: Encoder,
+    /// Timestamp of the most recent confirmed activity (poll saw the device
+    /// playing, OR a fresh cast was just dispatched). The poll loop uses
+    /// this to decide whether the device is in a transient idle window
+    /// (recent activity) or genuinely idle (long enough to clear state).
+    pub last_active: Arc<Mutex<Instant>>,
     pub pin: String,
 }
 
@@ -185,22 +194,22 @@ async fn status(State(s): State<SharedState>) -> impl IntoResponse {
     };
 
     // Position + duration:
-    //   - When go-chromecast reports a real duration (mp4 fallback casts), the
-    //     `time remaining=Xs/Ys` field uses X = remaining and Y = duration.
-    //   - When duration is unknown (our HLS muxer reports `-1s`), go-chromecast
-    //     reports X = elapsed-time-since-cast-started instead (verified by
-    //     observation: it counts up over time). We then back-fill duration
-    //     from the session's Piped metadata.
-    let (position, duration) = match s.caster.position_duration() {
-        Some((p, d)) => (Some(p), Some(d)),
-        None => {
-            let elapsed = s.caster.time_remaining(); // really elapsed when dur=-1
-            let dur = session.as_ref().map(|s| s.duration_secs).filter(|&d| d > 0);
-            match (elapsed, dur) {
-                (Some(e), Some(d)) => (Some(e.min(d)), Some(d)),
-                _ => (None, None),
-            }
-        }
+    //   Chromecast's `time remaining=X/Y` field is misleadingly named:
+    //   X actually counts UP from cast start (elapsed), not down (remaining).
+    //   Verified on both HLS muxer casts and mp4 fallback casts on Nvidia
+    //   Shield. Y is unreliable for muxer casts (often -1 or matches X)
+    //   but real for mp4 fallback. So always trust X as elapsed and prefer
+    //   Piped's Session duration as the source of truth for Y, falling
+    //   back to Chromecast's Y only when no Session exists (mp4 fallback).
+    let session_duration =
+        session.as_ref().map(|s| s.duration_secs).filter(|&d| d > 0);
+    let elapsed = s.caster.time_remaining();
+    let chromecast_dur = s.caster.position_duration().map(|(_, d)| d);
+    let duration = session_duration.or(chromecast_dur);
+    let position = match (elapsed, duration) {
+        (Some(e), Some(d)) => Some(e.min(d)),
+        (Some(e), None) => Some(e),
+        _ => None,
     };
 
     Json(StatusResponse {
@@ -246,7 +255,7 @@ async fn cast(State(s): State<SharedState>, Json(body): Json<UrlBody>) -> impl I
     match s.piped.resolve(&id, q).await {
         Err(e) => err(e).into_response(),
         Ok(video) => {
-            let (url, ct) = match resolve_cast_url(&s.streamer, &video, q, &s.public_host).await {
+            let (url, ct) = match resolve_cast_url(&s.streamer, &video, q, s.encoder, &s.public_host).await {
                 Some(u) => u,
                 None => return err("no playable stream URL").into_response(),
             };
@@ -254,11 +263,14 @@ async fn cast(State(s): State<SharedState>, Json(body): Json<UrlBody>) -> impl I
             match s.caster.load(&url, Some(ct)) {
                 Err(e) => err(e).into_response(),
                 Ok(_) => {
-                    let _ = s.queue.set_now_playing(&QueueEntry {
-                        id: video.id,
+                    if let Err(e) = s.queue.set_now_playing(&QueueEntry {
+                        id: video.id.clone(),
                         title: video.title.clone(),
-                    });
+                    }) {
+                        eprintln!("[api] set_now_playing failed: {e}");
+                    }
                     *s.last_cast_quality.lock().unwrap() = video.quality_label.clone();
+                    *s.last_active.lock().unwrap() = Instant::now();
                     Json(serde_json::json!({
                         "casting": true,
                         "title": video.title,

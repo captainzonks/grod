@@ -12,6 +12,8 @@
 //! - Stream resolution via self-hosted Piped API ([`piped`])
 //! - Local HLS muxer for 1080p casting (ffmpeg pulls video-only mp4 +
 //!   audio-only m4a from Piped, transcodes with libx264, serves over HTTP — [`streamer`])
+//! - Hardware-accelerated encoding via VAAPI / NVENC / QSV (auto-detected,
+//!   libx264 CPU fallback) — see [`config::Encoder`] and [`streamer::resolve_encoder`]
 //! - LAN HTTP API with optional PIN auth for companion apps ([`api`])
 //! - mDNS service advertisement (`_grod._tcp.local.`) for LAN auto-discovery ([`discovery`])
 //! - `grod firewall` subcommand prints LAN-scoped allow rules for
@@ -22,6 +24,7 @@
 //! ```text
 //! grod config discover          # find devices on LAN
 //! grod config set-api <url>     # set Piped API base URL
+//! grod config set-encoder auto  # auto | cpu | vaapi | nvenc | qsv
 //! grod cast <youtube-url>       # cast immediately or queue  (alias: c)
 //! grod play/pause               # toggle play/pause          (alias: pp)
 //! grod status                   # now playing + queue        (alias: s)

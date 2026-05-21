@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::api::{router, AppState};
 use crate::cast::Caster;
-use crate::config::{data_path, Quality};
+use crate::config::{data_path, Encoder, Quality};
 use crate::discovery;
 use crate::piped::PipedClient;
 use crate::queue::{Queue, QueueEntry};
@@ -133,6 +133,7 @@ pub struct DaemonConfig {
     pub stream_port: u16,
     pub api_pin: String,
     pub default_quality: Quality,
+    pub encoder: Encoder,
 }
 
 /// Run daemon loop + HTTP API server + stream server in current process.
@@ -151,6 +152,12 @@ pub async fn run_loop(cfg: DaemonConfig) -> Result<()> {
 
     let quality = Arc::new(Mutex::new(cfg.default_quality));
     let last_cast_quality = Arc::new(Mutex::new(String::new()));
+    // Seed last_active at "now" so the poll loop doesn't immediately consider
+    // the device idle right after daemon startup before any poll has occurred.
+    let last_active = Arc::new(Mutex::new(std::time::Instant::now()));
+    // Resolve auto to a concrete backend once at startup so every cast
+    // uses the same encoder and we surface the choice in the log.
+    let encoder = crate::streamer::resolve_encoder(cfg.encoder);
 
     let state = Arc::new(AppState {
         caster: caster.clone(),
@@ -160,6 +167,8 @@ pub async fn run_loop(cfg: DaemonConfig) -> Result<()> {
         public_host: public_host.clone(),
         default_quality: quality.clone(),
         last_cast_quality: last_cast_quality.clone(),
+        encoder,
+        last_active: last_active.clone(),
         pin: cfg.api_pin,
     });
 
@@ -171,6 +180,11 @@ pub async fn run_loop(cfg: DaemonConfig) -> Result<()> {
     eprintln!("[daemon] Stream server listening on 0.0.0.0:{}", cfg.stream_port);
     eprintln!("[daemon] Stream public host: {public_host}");
     eprintln!("[daemon] Default quality: {}", cfg.default_quality.label());
+    if matches!(cfg.encoder, Encoder::Auto) {
+        eprintln!("[daemon] Encoder: {} (auto-detected)", encoder.label());
+    } else {
+        eprintln!("[daemon] Encoder: {} (configured)", encoder.label());
+    }
 
     // Firewall hint: warn if the required ports look closed.
     check_firewall_hint(cfg.api_port, cfg.stream_port);
@@ -199,7 +213,7 @@ pub async fn run_loop(cfg: DaemonConfig) -> Result<()> {
         res = stream_server.clone().run() => {
             if let Err(e) = res { eprintln!("[daemon] Stream server error: {e}"); }
         }
-        _ = poll_loop(caster, piped, queue, stream_server, public_host, quality, last_cast_quality) => {}
+        _ = poll_loop(caster, piped, queue, stream_server, public_host, quality, last_cast_quality, encoder, last_active) => {}
         _ = shutdown_signal() => {
             eprintln!("[daemon] shutdown signal received");
         }
@@ -240,26 +254,51 @@ async fn poll_loop(
     public_host: String,
     quality: Arc<Mutex<Quality>>,
     last_cast_quality: Arc<Mutex<String>>,
+    encoder: Encoder,
+    last_active: Arc<Mutex<std::time::Instant>>,
 ) {
+    // Treat the device as truly idle only after IDLE_GRACE seconds without
+    // any confirmed activity (poll saw is_playing()=true, OR the API
+    // dispatched a fresh cast). ffmpeg's reconnect loop can take 5-10s to
+    // recover from a googlevideo CDN drop, during which the Chromecast
+    // briefly reports IDLE — without the grace window we'd wipe now_playing
+    // mid-flap and the /status response would collapse to "cast outside
+    // grod" while playback was actually resuming.
+    //
+    // Only clear now_playing when the queue is also empty: an immediate
+    // queue advance would overwrite it anyway, and showing the previous
+    // title for a few seconds beats blanking the UI.
+    const IDLE_GRACE: std::time::Duration = std::time::Duration::from_secs(20);
+
     loop {
         tokio::time::sleep(POLL_INTERVAL).await;
 
         if caster.is_playing() {
+            *last_active.lock().unwrap() = std::time::Instant::now();
             continue;
         }
 
-        let _ = queue.clear_now_playing();
+        let since_active = last_active.lock().unwrap().elapsed();
+        if since_active < IDLE_GRACE {
+            // Transient idle — wait for the next poll before deciding.
+            continue;
+        }
 
         match queue.pop() {
             Err(e) => eprintln!("[daemon] queue error: {e}"),
-            Ok(None) => continue,
+            Ok(None) => {
+                // Genuinely idle + nothing queued: clear the now_playing
+                // file so /status no longer reports a stale title.
+                let _ = queue.clear_now_playing();
+                continue;
+            },
             Ok(Some(entry)) => {
                 let q = *quality.lock().unwrap();
                 eprintln!("[daemon] casting: {} (quality: {})", entry.title, q.label());
                 match piped.resolve(&entry.id, q).await {
                     Err(e) => eprintln!("[daemon] resolve failed for {}: {e}", entry.id),
                     Ok(video) => {
-                        let (url, ct) = match resolve_cast_url(&streamer, &video, q, &public_host).await {
+                        let (url, ct) = match resolve_cast_url(&streamer, &video, q, encoder, &public_host).await {
                             Some(u) => u,
                             None => {
                                 eprintln!("[daemon] no playable URL for {}", entry.id);
@@ -275,6 +314,7 @@ async fn poll_loop(
                                 title: entry.title,
                             });
                             *last_cast_quality.lock().unwrap() = video.quality_label.clone();
+                            *last_active.lock().unwrap() = std::time::Instant::now();
                         }
                     }
                 }
@@ -289,11 +329,12 @@ pub async fn resolve_cast_url(
     streamer: &StreamServer,
     video: &crate::piped::ResolvedVideo,
     quality: Quality,
+    encoder: Encoder,
     public_host: &str,
 ) -> Option<(String, &'static str)> {
     if let (Some(v), Some(a)) = (video.video_url.clone(), video.audio_url.clone()) {
         match streamer
-            .set_session(v, a, video.quality_label.clone(), quality, video.duration_secs, public_host)
+            .set_session(v, a, video.quality_label.clone(), quality, encoder, video.duration_secs, public_host)
             .await
         {
             Ok(url) => Some((url, "application/x-mpegurl")),

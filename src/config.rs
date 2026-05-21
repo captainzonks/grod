@@ -20,6 +20,49 @@ pub enum Quality {
     P360,
 }
 
+/// Video encoder backend used by the HLS muxer.
+///
+/// HW encoders (vaapi/nvenc/qsv) deliver realtime 1080p at near-zero CPU cost
+/// and can sustain High@4.0 (better quality than libx264 ultrafast baseline).
+/// `Auto` probes for HW availability at daemon start and falls back to CPU.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Encoder {
+    /// Probe for hardware encoder; fall back to CPU.
+    Auto,
+    /// Software encoding via libx264 (ultrafast baseline; works everywhere).
+    Cpu,
+    /// AMD/Intel VAAPI (`h264_vaapi`) — Linux iGPU.
+    Vaapi,
+    /// NVIDIA NVENC (`h264_nvenc`) — dedicated GPU.
+    Nvenc,
+    /// Intel Quick Sync Video (`h264_qsv`).
+    Qsv,
+}
+
+impl Encoder {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Encoder::Auto => "auto",
+            Encoder::Cpu => "cpu",
+            Encoder::Vaapi => "vaapi",
+            Encoder::Nvenc => "nvenc",
+            Encoder::Qsv => "qsv",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "auto" => Some(Encoder::Auto),
+            "cpu" | "libx264" | "x264" | "sw" => Some(Encoder::Cpu),
+            "vaapi" | "h264_vaapi" => Some(Encoder::Vaapi),
+            "nvenc" | "h264_nvenc" | "nvidia" => Some(Encoder::Nvenc),
+            "qsv" | "h264_qsv" | "intel" => Some(Encoder::Qsv),
+            _ => None,
+        }
+    }
+}
+
 impl Quality {
     pub fn target_height(&self) -> u32 {
         match self {
@@ -69,6 +112,9 @@ pub struct Config {
     /// Default cast quality. Default: 1080p.
     #[serde(default = "default_quality")]
     pub default_quality: Quality,
+    /// Video encoder backend for the HLS muxer. Default: auto.
+    #[serde(default = "default_encoder")]
+    pub encoder: Encoder,
 }
 
 fn default_api_port() -> u16 {
@@ -83,6 +129,10 @@ fn default_quality() -> Quality {
     Quality::P1080
 }
 
+fn default_encoder() -> Encoder {
+    Encoder::Auto
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -93,6 +143,7 @@ impl Default for Config {
             stream_port: 7879,
             api_pin: String::new(),
             default_quality: Quality::P1080,
+            encoder: Encoder::Auto,
         }
     }
 }

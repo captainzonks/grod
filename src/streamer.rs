@@ -26,7 +26,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use crate::config::Quality;
+use crate::config::{Encoder, Quality};
 use rand::Rng;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -93,6 +93,7 @@ impl StreamServer {
         audio_url: String,
         quality_label: String,
         quality: Quality,
+        encoder: Encoder,
         duration_secs: u64,
         public_host: &str,
     ) -> Result<String> {
@@ -116,7 +117,7 @@ impl StreamServer {
         // Master playlist: tells Chromecast the codec + resolution up front so it
         // can pick a hardware decoder before fetching the media playlist.
         // Without this, Shield silently rejects the stream.
-        let (codecs, resolution, bandwidth) = master_hints(quality);
+        let (codecs, resolution, bandwidth) = master_hints(quality, encoder);
         let master_body = format!(
             "#EXTM3U\n\
              #EXT-X-VERSION:6\n\
@@ -174,11 +175,35 @@ impl StreamServer {
         //   -reconnect_on_network_error 1: reconnect on net errors (timeout, RST)
         //   -reconnect_on_http_error 4xx,5xx: retry on HTTP errors
         //   -reconnect_delay_max 5      : cap backoff at 5s between retries
+        // ffmpeg 8.1 logs "Late SEI is not implemented" on recent YouTube
+        // uploads — this is cosmetic, the decoder continues fine. The
+        // dominant throughput cost is the libx264 encode itself, so we
+        // optimize the encoder (see -preset/profile below) rather than
+        // try to strip SEI NALUs pre-decode (a `-bsf:v filter_units`
+        // pass *adds* serializing overhead that's worse than the warning).
         cmd.arg("-hide_banner")
             .arg("-loglevel")
             .arg("warning")
             .arg("-fflags")
-            .arg("+genpts")
+            .arg("+genpts");
+
+        // HW encoder init: must come before the first -i so the device
+        // context is available when the encoder is configured downstream.
+        // VAAPI/QSV need an explicit hwdevice; NVENC does not.
+        match encoder {
+            Encoder::Vaapi => {
+                cmd.arg("-init_hw_device")
+                    .arg("vaapi=va:/dev/dri/renderD128")
+                    .arg("-filter_hw_device").arg("va");
+            }
+            Encoder::Qsv => {
+                cmd.arg("-init_hw_device").arg("qsv=qs")
+                    .arg("-filter_hw_device").arg("qs");
+            }
+            _ => {}
+        }
+
+        cmd
             // --- input 0: video ---
             .arg("-reconnect").arg("1")
             .arg("-reconnect_at_eof").arg("1")
@@ -200,17 +225,60 @@ impl StreamServer {
             .arg("-map")
             .arg("0:v:0")
             .arg("-map")
-            .arg("1:a:0")
-            .arg("-c:v")
-            .arg("libx264")
-            .arg("-preset")
-            .arg("veryfast")
-            .arg("-crf")
-            .arg("20")
-            .arg("-x264-params")
-            .arg(&x264_params)
-            .arg("-c:a")
-            .arg("copy")
+            .arg("1:a:0");
+
+        // Per-encoder video output args. Each branch must produce H.264 with
+        // a profile/level matching the CODECS hint emitted by master_hints().
+        match encoder {
+            Encoder::Cpu | Encoder::Auto => {
+                // ultrafast+baseline: ~2.2x realtime at 1080p on Ryzen U-series.
+                // veryfast+High drops to ~0.2x and starves the Chromecast buffer.
+                cmd.arg("-c:v").arg("libx264")
+                    .arg("-preset").arg("ultrafast")
+                    .arg("-profile:v").arg("baseline")
+                    .arg("-level:v").arg("4.0")
+                    .arg("-threads").arg("0")
+                    .arg("-crf").arg("20")
+                    .arg("-x264-params").arg(&x264_params);
+            }
+            Encoder::Vaapi => {
+                // VAAPI needs frames uploaded onto a hwaccel surface. nv12
+                // is what every AMD/Intel iGPU encoder accepts; format
+                // converts the decoded sw frame, hwupload moves it to GPU.
+                let gop = SEGMENT_DURATION_SECS * 24;
+                cmd.arg("-vf").arg("format=nv12,hwupload")
+                    .arg("-c:v").arg("h264_vaapi")
+                    .arg("-profile:v").arg("high")
+                    .arg("-level").arg("40")
+                    .arg("-rc_mode").arg("CQP")
+                    .arg("-qp").arg("22")
+                    .arg("-g").arg(gop.to_string())
+                    .arg("-bf").arg("0");
+            }
+            Encoder::Nvenc => {
+                let gop = SEGMENT_DURATION_SECS * 24;
+                cmd.arg("-c:v").arg("h264_nvenc")
+                    .arg("-preset").arg("p4")  // p1=fastest, p7=slowest; p4 ≈ medium
+                    .arg("-profile:v").arg("high")
+                    .arg("-level").arg("4.0")
+                    .arg("-rc").arg("vbr")
+                    .arg("-cq").arg("22")
+                    .arg("-g").arg(gop.to_string())
+                    .arg("-bf").arg("0");
+            }
+            Encoder::Qsv => {
+                let gop = SEGMENT_DURATION_SECS * 24;
+                cmd.arg("-vf").arg("format=nv12,hwupload=extra_hw_frames=64")
+                    .arg("-c:v").arg("h264_qsv")
+                    .arg("-preset").arg("veryfast")
+                    .arg("-profile:v").arg("high")
+                    .arg("-level").arg("40")
+                    .arg("-g").arg(gop.to_string())
+                    .arg("-bf").arg("0");
+            }
+        }
+
+        cmd.arg("-c:a").arg("copy")
             .arg("-copyts")
             .arg("-start_at_zero")
             .arg("-muxdelay")
@@ -391,23 +459,73 @@ async fn file_handler(
     (StatusCode::OK, headers, body).into_response()
 }
 
-/// CODECS string + resolution + bandwidth hint per target quality.
+/// CODECS string + resolution + bandwidth hint per target quality + encoder.
 ///
 /// avc1 codec strings follow ISO/IEC 14496-15: `avc1.PPCCLL` where PP=profile,
 /// CC=constraint flags, LL=level. AAC-LC is mp4a.40.2.
 /// Bandwidth is a rough VBR ceiling — Chromecast uses it for buffer sizing, not
 /// gating, so over-estimating slightly is safe.
-fn master_hints(q: Quality) -> (&'static str, &'static str, u32) {
+///
+/// CODECS hint MUST match the actual stream profile or Chromecast rejects
+/// LOAD. CPU path uses Constrained Baseline for speed; HW paths produce
+/// High profile at no CPU cost so we advertise it accordingly.
+fn master_hints(q: Quality, encoder: Encoder) -> (&'static str, &'static str, u32) {
+    let hw = !matches!(encoder, Encoder::Cpu | Encoder::Auto);
     // (codecs, resolution, bandwidth_bps)
-    match q {
-        // High profile, level 4.0 — covers 1080p30
-        Quality::Best | Quality::P1080 => ("avc1.640028,mp4a.40.2", "1920x1080", 6_000_000),
-        // Main profile, level 3.1 — covers 720p30
-        Quality::P720 => ("avc1.4d401f,mp4a.40.2", "1280x720", 3_000_000),
-        // Main profile, level 3.0 — 480p30
-        Quality::P480 => ("avc1.4d401e,mp4a.40.2", "854x480", 1_500_000),
-        // Baseline profile, level 3.0 — 360p30
-        Quality::P360 => ("avc1.42c01e,mp4a.40.2", "640x360", 800_000),
+    match (q, hw) {
+        // --- HW encoders: High profile ---
+        (Quality::Best | Quality::P1080, true) => ("avc1.640028,mp4a.40.2", "1920x1080", 6_000_000),
+        (Quality::P720, true) => ("avc1.64001f,mp4a.40.2", "1280x720", 3_000_000),
+        (Quality::P480, true) => ("avc1.64001e,mp4a.40.2", "854x480", 1_500_000),
+        (Quality::P360, true) => ("avc1.64001e,mp4a.40.2", "640x360", 800_000),
+        // --- CPU encoder: Constrained Baseline ---
+        (Quality::Best | Quality::P1080, false) => ("avc1.42e028,mp4a.40.2", "1920x1080", 6_000_000),
+        (Quality::P720, false) => ("avc1.42e01f,mp4a.40.2", "1280x720", 3_000_000),
+        (Quality::P480, false) => ("avc1.42e01e,mp4a.40.2", "854x480", 1_500_000),
+        (Quality::P360, false) => ("avc1.42e01e,mp4a.40.2", "640x360", 800_000),
+    }
+}
+
+/// Resolve `Encoder::Auto` to a concrete backend by probing `ffmpeg -encoders`
+/// and the DRI render node. Non-Auto values pass through unchanged so the user
+/// can force a backend even if probing would have rejected it (useful for
+/// debugging or non-standard installs).
+///
+/// Order of preference for Auto: NVENC > VAAPI > QSV > CPU.
+/// NVENC is fastest when present; VAAPI covers most Linux iGPUs; QSV is
+/// Intel-specific. CPU is the universal fallback.
+pub fn resolve_encoder(requested: Encoder) -> Encoder {
+    if !matches!(requested, Encoder::Auto) {
+        return requested;
+    }
+    let encoders = std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+    let has_enc = |name: &str| encoders.contains(name);
+    let has_dri = std::path::Path::new("/dev/dri/renderD128").exists();
+    // NVENC requires actual NVIDIA hardware. ffmpeg ships the encoder
+    // unconditionally, so check for the kernel module's device node.
+    let has_nvidia = std::path::Path::new("/dev/nvidia0").exists()
+        || std::path::Path::new("/dev/nvidiactl").exists();
+    // QSV requires Intel iGPU. AMD's /dev/dri/renderD128 exists too, so
+    // distinguish via vendor: only enable QSV if i915 driver is loaded.
+    let has_intel_gpu = std::fs::read_to_string("/sys/class/drm/card0/device/vendor")
+        .map(|v| v.trim() == "0x8086")
+        .unwrap_or(false);
+
+    if has_enc("h264_nvenc") && has_nvidia {
+        Encoder::Nvenc
+    } else if has_enc("h264_qsv") && has_dri && has_intel_gpu {
+        Encoder::Qsv
+    } else if has_enc("h264_vaapi") && has_dri {
+        // VAAPI is the universal Linux iGPU path — works on AMD, Intel
+        // (with i965/iHD driver), and even some NVIDIA via nvidia-vaapi.
+        Encoder::Vaapi
+    } else {
+        Encoder::Cpu
     }
 }
 

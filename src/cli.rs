@@ -122,4 +122,8 @@ pub enum ConfigAction {
     SetQuality {
         quality: String,
     },
+    /// Set HLS muxer video encoder (auto | cpu | vaapi | nvenc | qsv)
+    SetEncoder {
+        encoder: String,
+    },
 }

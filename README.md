@@ -39,6 +39,7 @@
 
 - Cast by YouTube URL, Piped URL, or raw 11-char video ID
 - Local HLS muxer for high-resolution casting (libx264 with `repeat-headers`, forced IDR per segment for Chromecast decoder compatibility)
+- Hardware-accelerated encoding via **VAAPI** (AMD/Intel iGPU), **NVENC** (NVIDIA), or **QSV** (Intel) — auto-detected, with libx264 CPU fallback
 - Configurable quality preference: `best | 1080p | 720p | 480p | 360p`
 - Automatic fallback to muxed mp4 (~360p) when a target quality is unavailable
 - Original-audio-track preference (skips auto-dubs on multi-language videos)
@@ -168,6 +169,7 @@ api_port        = 7878             # HTTP API port (used by mobile remotes)
 stream_port     = 7879             # local HLS muxer port (Chromecast pulls from here)
 api_pin         = ""               # optional PIN; empty disables auth
 default_quality = "1080p"          # best | 1080p | 720p | 480p | 360p
+encoder         = "auto"           # auto | cpu | vaapi | nvenc | qsv
 ```
 
 The example addresses above are placeholders — `grod config discover` and `grod firewall` print real values for your network.
@@ -175,13 +177,36 @@ The example addresses above are placeholders — `grod config discover` and `gro
 ### Configuration commands
 
 ```bash
-grod config show                       # show current config
+grod config show                       # show current config (auto-resolved encoder shown as "auto → vaapi")
 grod config set-api <url>              # set Piped API base URL
 grod config set-device <addr> [port]   # set device address (default port: 8009)
 grod config discover                   # discover Chromecast devices on LAN
 grod config set-pin <pin>              # set API PIN (empty string disables auth)
 grod config set-quality <quality>      # default cast quality
+grod config set-encoder <encoder>      # auto | cpu | vaapi | nvenc | qsv
 ```
+
+### Hardware encoding
+
+The HLS muxer can transcode video on the GPU instead of libx264 on the CPU. On a laptop iGPU (tested AMD Ryzen 7 5700U / Lucienne) VAAPI sustains **12×+ realtime at 1080p High@4.0 with ~150% CPU** — vs. libx264 `ultrafast` at ~2× realtime, Constrained Baseline only.
+
+| Encoder  | When to use                                    | Profile        | ffmpeg encoder |
+| -------- | ---------------------------------------------- | -------------- | -------------- |
+| `auto`   | Default — probes for the best available HW    | varies         | varies         |
+| `vaapi`  | AMD or Intel iGPU on Linux                     | High@4.0       | `h264_vaapi`   |
+| `nvenc`  | NVIDIA GPU                                     | High@4.0       | `h264_nvenc`   |
+| `qsv`    | Intel CPU with Quick Sync Video                | High@4.0       | `h264_qsv`     |
+| `cpu`    | Forced libx264 fallback (no GPU available)     | Constrained Baseline@4.0 | `libx264 -preset ultrafast` |
+
+Auto-detection probes `/dev/dri/renderD128` (VAAPI/QSV) and `/dev/nvidia*` (NVENC), plus checks `ffmpeg -encoders` for the relevant encoder symbol. Auto preference order: NVENC > QSV > VAAPI > CPU. Restart the daemon after `set-encoder` for it to take effect.
+
+```bash
+grod config set-encoder auto      # let grod pick best HW backend
+grod config set-encoder vaapi     # force VAAPI even if NVENC available
+grod config show                  # prints "Encoder : auto → vaapi" when resolved
+```
+
+> **Note:** the `CODECS=` hint in the master playlist is profile-aware — HW encoders emit `avc1.640028` (High@4.0), CPU emits `avc1.42e028` (Constrained Baseline@4.0). Mismatching the hint causes Chromecast to reject the LOAD silently.
 
 ---
 

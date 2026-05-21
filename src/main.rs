@@ -4,6 +4,7 @@ use grod::config;
 use grod::daemon;
 use grod::piped;
 use grod::queue;
+use grod::streamer;
 use grod::tui;
 
 use anyhow::{bail, Context, Result};
@@ -248,6 +249,7 @@ async fn handle_daemon(cfg: Config) -> Result<()> {
         stream_port: cfg.stream_port,
         api_pin: cfg.api_pin,
         default_quality: cfg.default_quality,
+        encoder: cfg.encoder,
     }).await
 }
 
@@ -260,6 +262,12 @@ async fn handle_config(action: ConfigAction, mut cfg: Config) -> Result<()> {
             println!("Stream port: {}", cfg.stream_port);
             println!("API PIN   : {}", if cfg.api_pin.is_empty() { "(not set)" } else { "****" });
             println!("Quality   : {}", cfg.default_quality.label());
+            let resolved = streamer::resolve_encoder(cfg.encoder);
+            if matches!(cfg.encoder, config::Encoder::Auto) {
+                println!("Encoder   : {} (auto \u{2192} {})", cfg.encoder.label(), resolved.label());
+            } else {
+                println!("Encoder   : {}", cfg.encoder.label());
+            }
         }
         ConfigAction::SetApi { url } => {
             cfg.piped_api = url.clone();
@@ -287,6 +295,17 @@ async fn handle_config(action: ConfigAction, mut cfg: Config) -> Result<()> {
             cfg.default_quality = q;
             cfg.save()?;
             println!("Default quality set to: {}", q.label());
+        }
+        ConfigAction::SetEncoder { encoder } => {
+            let e = config::Encoder::parse(&encoder)
+                .with_context(|| format!("invalid encoder '{encoder}' (use auto|cpu|vaapi|nvenc|qsv)"))?;
+            cfg.encoder = e;
+            cfg.save()?;
+            println!("Encoder set to: {}", e.label());
+            if matches!(e, config::Encoder::Auto) {
+                let resolved = streamer::resolve_encoder(e);
+                println!("  Auto resolves on this host to: {}", resolved.label());
+            }
         }
         ConfigAction::Discover => {
             let out = std::process::Command::new("go-chromecast")
