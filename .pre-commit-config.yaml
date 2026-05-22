@@ -1,0 +1,17 @@
+# https://pre-commit.com/
+# Install: `pre-commit install --hook-type pre-commit --hook-type pre-push`
+# Manual scan: `pre-commit run --all-files`
+#
+# ggshield needs auth on first run: `ggshield auth login`
+# Free tier allows ~unlimited local pre-commit scans against staged diff.
+
+repos:
+  - repo: https://github.com/GitGuardian/ggshield
+    rev: v1.50.4
+    hooks:
+      - id: ggshield
+        language_version: python3
+        stages: [pre-commit]
+      - id: ggshield-push
+        language_version: python3
+        stages: [pre-push]

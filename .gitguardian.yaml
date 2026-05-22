@@ -1,0 +1,9 @@
+# https://docs.gitguardian.com/ggshield-docs/reference/configuration
+# ggshield secret-scan configuration
+
+version: 2
+
+secret:
+  ignored_paths:
+    # Build outputs.
+    - "target/**"
