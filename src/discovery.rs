@@ -4,6 +4,10 @@
 //! TXT records:
 //!   - `version`: grod crate version
 //!   - `pin`: "1" if API requires PIN, "0" otherwise
+//!   - `device`: hardware role — `"laptop"` for this Chromecast-bridging
+//!     daemon; the grod_tv Android TV port advertises `"grod-tv"` on the
+//!     same service. Lets discovery clients disambiguate when both are
+//!     present on the LAN.
 //!
 //! Clients (Flutter app) can browse for this service to auto-discover
 //! the server's IP + port instead of requiring manual entry.
@@ -27,6 +31,7 @@ pub fn publish(lan_host: &str, api_port: u16, pin_required: bool) -> Result<Serv
     let mut props = std::collections::HashMap::new();
     props.insert("version".to_string(), env!("CARGO_PKG_VERSION").to_string());
     props.insert("pin".to_string(), if pin_required { "1" } else { "0" }.to_string());
+    props.insert("device".to_string(), "laptop".to_string());
 
     let info = ServiceInfo::new(
         SERVICE_TYPE,
