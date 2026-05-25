@@ -319,6 +319,12 @@ mod tests {
             extract_video_id("https://youtu.be/dQw4w9WgXcQ"),
             Some("dQw4w9WgXcQ".into())
         );
-        assert_eq!(extract_video_id("not-a-video"), None);
+        // Anything that is not 11 chars of [A-Za-z0-9_-] and is not embedded
+        // in a recognised URL form should fail. "not-a-video" *is* 11 chars
+        // of the allowed charset, so it deliberately matches the raw-ID path
+        // — pick inputs that can't collide.
+        assert_eq!(extract_video_id("not a video"), None);
+        assert_eq!(extract_video_id("too-many-chars-here"), None);
+        assert_eq!(extract_video_id(""), None);
     }
 }
