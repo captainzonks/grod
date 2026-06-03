@@ -73,6 +73,7 @@ pub fn router(state: SharedState) -> Router {
         .route("/play-pause", post(play_pause))
         .route("/volume-up", post(volume_up))
         .route("/volume-down", post(volume_down))
+        .route("/volume", post(set_volume))
         .route("/mute", post(mute))
         .route("/unmute", post(unmute))
         .route("/forward", post(forward))
@@ -102,6 +103,13 @@ struct StatusResponse {
     /// Total media duration in seconds. Null in the same cases as `position`.
     #[serde(skip_serializing_if = "Option::is_none")]
     duration: Option<u64>,
+    /// Current device volume in `[0.0, 1.0]`. Null when the device is
+    /// unreachable. Lets clients render an absolute volume slider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    volume: Option<f64>,
+    /// Whether the device is muted. Null when unreachable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    muted: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -145,6 +153,12 @@ struct SearchQuery {
 #[derive(Deserialize)]
 struct QualityBody {
     quality: String,
+}
+
+#[derive(Deserialize)]
+struct VolumeBody {
+    /// Absolute volume level in `[0.0, 1.0]`. Clamped in `Caster::set_volume`.
+    level: f64,
 }
 
 fn ok() -> Json<OkResponse> {
@@ -212,6 +226,11 @@ async fn status(State(s): State<SharedState>) -> impl IntoResponse {
         _ => None,
     };
 
+    // Volume + muted come from the same status line already fetched into
+    // `raw` — no extra go-chromecast invocation.
+    let volume = crate::cast::Caster::parse_volume(&raw);
+    let muted = crate::cast::Caster::parse_muted(&raw);
+
     Json(StatusResponse {
         state,
         now_playing,
@@ -220,6 +239,8 @@ async fn status(State(s): State<SharedState>) -> impl IntoResponse {
         quality,
         position,
         duration,
+        volume,
+        muted,
     })
 }
 
@@ -334,6 +355,13 @@ async fn volume_up(State(s): State<SharedState>) -> impl IntoResponse {
 
 async fn volume_down(State(s): State<SharedState>) -> impl IntoResponse {
     match s.caster.volume_down() {
+        Ok(_) => ok().into_response(),
+        Err(e) => err(e).into_response(),
+    }
+}
+
+async fn set_volume(State(s): State<SharedState>, Json(body): Json<VolumeBody>) -> impl IntoResponse {
+    match s.caster.set_volume(body.level) {
         Ok(_) => ok().into_response(),
         Err(e) => err(e).into_response(),
     }
