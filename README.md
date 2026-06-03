@@ -56,7 +56,7 @@
 
 - axum-based HTTP API on configurable port (default `7878`)
 - Optional `X-Grod-Pin` header authentication
-- Endpoints: `/status`, `/cast`, `/queue`, `/quality`, `/play-pause`, `/skip`, `/volume-up`, `/volume-down`, `/search`, and more
+- Endpoints: `/status`, `/cast`, `/queue`, `/quality`, `/play-pause`, `/skip`, `/volume-up`, `/volume-down`, `/volume`, `/search`, and more
 - mDNS service advertisement (`_grod._tcp.local.`) for zero-config LAN discovery
 - `grod firewall` subcommand prints LAN-scoped allow rules for `ufw`, `firewalld`, `nftables`, and `iptables`
 
@@ -246,6 +246,7 @@ grod forward [secs]    # seek forward (default 10s)    (alias: f)
 grod back [secs]       # seek backward (default 10s)   (alias: b)
 grod volume-up         # increase volume               (alias: vu)
 grod volume-down       # decrease volume               (alias: vd)
+grod volume <0.0-1.0>  # set absolute volume level     (alias: vol)
 grod mute              # mute device                   (alias: m)
 grod unmute            # unmute device                 (alias: um)
 ```
@@ -291,7 +292,7 @@ The unit looks for `grod` on `$PATH` first, then `~/.local/bin/grod`. Override t
 
 ### HTTP API + remote control
 
-While the daemon is running it exposes an HTTP API for LAN clients (e.g. a phone remote). All control endpoints (`/cast`, `/skip`, `/play-pause`, `/volume-up`, `/queue`, ...) are POST, plus `GET /status` and `GET /search?q=...`. With a PIN configured, requests must include the `X-Grod-Pin: <pin>` header. The daemon also advertises itself on the LAN via mDNS as `_grod._tcp.local.` so clients can auto-discover it.
+While the daemon is running it exposes an HTTP API for LAN clients (e.g. a phone remote). All control endpoints (`/cast`, `/skip`, `/play-pause`, `/volume-up`, `/volume` (body `{"level": 0.0-1.0}`), `/queue`, ...) are POST, plus `GET /status` (which now reports `volume` and `muted`) and `GET /search?q=...`. With a PIN configured, requests must include the `X-Grod-Pin: <pin>` header. The daemon also advertises itself on the LAN via mDNS as `_grod._tcp.local.` so clients can auto-discover it.
 
 ```bash
 grod config set-pin 1234       # require this PIN on every request (omit to disable)

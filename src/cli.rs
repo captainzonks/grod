@@ -43,6 +43,12 @@ pub enum Commands {
     /// Decrease volume
     #[command(alias = "vd")]
     VolumeDown,
+    /// Set absolute volume level (0.0 - 1.0)
+    #[command(alias = "vol")]
+    Volume {
+        /// Target level in [0.0, 1.0]; clamped if out of range.
+        level: f64,
+    },
     /// Seek forward by seconds (default 10)
     #[command(alias = "f")]
     Forward {

@@ -119,6 +119,7 @@ async fn handle_command(
         Commands::Unmute => caster.unmute()?,
         Commands::VolumeUp => caster.volume_up()?,
         Commands::VolumeDown => caster.volume_down()?,
+        Commands::Volume { level } => caster.set_volume(level)?,
         Commands::Forward { seconds } => caster.seek_forward(seconds)?,
         Commands::Back { seconds } => caster.seek_back(seconds)?,
 

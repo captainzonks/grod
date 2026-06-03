@@ -69,6 +69,56 @@ impl Caster {
         self.gc(&["volume-down"])
     }
 
+    /// Set the device volume to an absolute level in `[0.0, 1.0]`.
+    /// go-chromecast accepts a float arg to `volume`; values outside the
+    /// range are clamped here so a malformed client request can't push the
+    /// receiver into undefined behavior.
+    pub fn set_volume(&self, level: f64) -> Result<()> {
+        let clamped = level.clamp(0.0, 1.0);
+        // Two decimals matches go-chromecast's own display granularity and
+        // avoids sending noise like 0.4700000001.
+        self.gc(&["volume", &format!("{clamped:.2}")])
+    }
+
+    /// Current device volume in `[0.0, 1.0]`, parsed from the status line
+    /// (`"...volume=0.47 muted=false"`). None when the device is unreachable
+    /// or the field is absent.
+    pub fn volume(&self) -> Option<f64> {
+        Self::parse_volume(&self.status_raw().ok()?)
+    }
+
+    /// True if the device is muted, parsed from the status line
+    /// (`"...muted=false"`). None when unreachable or the field is absent.
+    pub fn muted(&self) -> Option<bool> {
+        Self::parse_muted(&self.status_raw().ok()?)
+    }
+
+    /// Pull the `volume=<float>` field out of a go-chromecast status line.
+    /// Split out so it can be unit-tested without a live device and reused by
+    /// the API `/status` handler, which already holds a `status_raw()` string.
+    pub(crate) fn parse_volume(raw: &str) -> Option<f64> {
+        let marker = "volume=";
+        let pos = raw.find(marker)?;
+        let after = &raw[pos + marker.len()..];
+        let field: String = after
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != ',')
+            .collect();
+        field.parse().ok()
+    }
+
+    /// Pull the `muted=<bool>` field out of a go-chromecast status line.
+    pub(crate) fn parse_muted(raw: &str) -> Option<bool> {
+        let marker = "muted=";
+        let pos = raw.find(marker)?;
+        let after = &raw[pos + marker.len()..];
+        let field: String = after
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != ',')
+            .collect();
+        field.parse().ok()
+    }
+
     pub fn seek_forward(&self, seconds: u32) -> Result<()> {
         self.gc(&["seek", &seconds.to_string()])
     }
@@ -158,5 +208,43 @@ impl Caster {
         }
         let duration: u64 = right.parse().ok()?;
         Some((remaining, duration))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Caster;
+
+    #[test]
+    fn parses_volume_from_idle_status() {
+        assert_eq!(
+            Caster::parse_volume("Idle, volume=0.47 muted=false"),
+            Some(0.47)
+        );
+    }
+
+    #[test]
+    fn parses_volume_when_followed_by_comma() {
+        assert_eq!(
+            Caster::parse_volume("volume=1.00, something else"),
+            Some(1.0)
+        );
+    }
+
+    #[test]
+    fn volume_absent_returns_none() {
+        assert_eq!(Caster::parse_volume("PLAYING, muted=false"), None);
+    }
+
+    #[test]
+    fn parses_muted_flag() {
+        assert_eq!(
+            Caster::parse_muted("Idle, volume=0.47 muted=true"),
+            Some(true)
+        );
+        assert_eq!(
+            Caster::parse_muted("Idle, volume=0.47 muted=false"),
+            Some(false)
+        );
     }
 }
