@@ -255,9 +255,11 @@ fn pick_streams_for_quality(
 
 /// Fallback: a single muxed stream URL (low-res, no ffmpeg needed).
 fn pick_muxed_fallback(streams: &[VideoStream]) -> Option<String> {
-    // Prefer muxed mp4 (itag 18, ~360p)
+    // Prefer muxed mp4 (itag 18, ~360p). Restrict to format MPEG_4 so LBRY
+    // mirrors (mime video/mp4 but format LBRY MP4/LBRY HLS) aren't picked —
+    // those URLs 401 for us. See GH issue #3.
     for s in streams {
-        if !s.video_only && s.mime_type == "video/mp4" {
+        if !s.video_only && s.mime_type == "video/mp4" && s.format.as_deref() == Some("MPEG_4") {
             return Some(s.url.clone());
         }
     }
@@ -326,5 +328,46 @@ mod tests {
         assert_eq!(extract_video_id("not a video"), None);
         assert_eq!(extract_video_id("too-many-chars-here"), None);
         assert_eq!(extract_video_id(""), None);
+    }
+
+    fn video_stream(url: &str, mime: &str, video_only: bool, format: Option<&str>) -> VideoStream {
+        VideoStream {
+            url: url.to_string(),
+            mime_type: mime.to_string(),
+            video_only,
+            quality: None,
+            height: 0,
+            format: format.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn muxed_fallback_skips_lbry_mirrors() {
+        // Reproduces GH issue #3: Piped lists LBRY mirrors before the real
+        // muxed MPEG_4 stream. LBRY's mp4 URLs 401 for us, so picking the
+        // first video/mp4 entry (pre-fix behavior) breaks playback.
+        let streams = vec![
+            video_stream("https://player.odycdn.com/lbry.mp4", "video/mp4", false, Some("LBRY MP4")),
+            video_stream("https://lbry.example/hls.m3u8", "application/x-mpegurl", false, Some("LBRY HLS")),
+            video_stream("https://piped.example/360p.mp4", "video/mp4", false, Some("MPEG_4")),
+        ];
+
+        assert_eq!(
+            pick_muxed_fallback(&streams),
+            Some("https://piped.example/360p.mp4".to_string())
+        );
+    }
+
+    #[test]
+    fn muxed_fallback_falls_back_to_hls_when_no_mpeg4() {
+        let streams = vec![
+            video_stream("https://player.odycdn.com/lbry.mp4", "video/mp4", false, Some("LBRY MP4")),
+            video_stream("https://piped.example/hls.m3u8", "application/x-mpegurl", false, None),
+        ];
+
+        assert_eq!(
+            pick_muxed_fallback(&streams),
+            Some("https://piped.example/hls.m3u8".to_string())
+        );
     }
 }
