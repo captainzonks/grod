@@ -51,9 +51,11 @@ jobs:
 
       - name: Package
         shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           BINARY=target/${{ matrix.target }}/release/${{ matrix.artifact }}
-          ARCHIVE=grod-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          ARCHIVE="grod-${REF_NAME}-${{ matrix.target }}.tar.gz"
           tar -czf "$ARCHIVE" -C "$(dirname $BINARY)" "$(basename $BINARY)"
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
